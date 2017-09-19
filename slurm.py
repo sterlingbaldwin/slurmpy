@@ -15,20 +15,18 @@ class Slurm(object):
             raise Exception('Unable to find slurm, is it installed on this sytem?')
 
     
-    def batch(self, cmd, **kwargs):
+    def batch(self, cmd, sargs):
         """
         Submit to the batch queue in non-interactive mode
 
         Parameters:
             cmd (str): The path to the run script that should be submitted
-            kwargs of slurm arguments to pass to sbatch. The keywords will be used as
-                the argument, the value as its value. If the value is False or None,
-                the command is assumed to be a binary flag.
+            sargs (str): The additional arguments to pass to slurm
         Returns:
             job id of the new job (int)
         """
        
-        out, err = self._submit('sbatch', cmd, **kwargs)
+        out, err = self._submit('sbatch', cmd, sargs)
         if err:
             raise Exception('SLURM ERROR: ' + err)
         out = out.split()
@@ -40,7 +38,7 @@ class Slurm(object):
             raise e
         return job_id
 
-    def run(self, cmd, **kwargs):
+    def run(self, cmd, sargs=False):
         """
         Submit to slurm controller in interactive mode
 
@@ -51,23 +49,29 @@ class Slurm(object):
         Returns:
             the output of the job (str)
         """
-        out, err = self._submit('srun', cmd, **kwargs)
+        out, err = self._submit('srun', cmd, sargs)
         if 'error' in out:
             return False, err
         else:
             return True, out
 
-    def _submit(self, subtype, cmd, **kwargs):
+    def _submit(self, subtype, cmd, sargs=False):
 
-        argstring = ''
-        for arg in kwargs.items():
-            print arg
-            argstring += ' ' + ' '.join(arg)
+        cmd = [subtype, cmd, sargs] if sargs else [subtype, cmd]
+        tries = 0
+        while tries != 10:
+            proc = Popen(cmd, shell=False, stderr=PIPE, stdout=PIPE)
+            out, err = proc.communicate()
+            if 'Transport endpoint is not connected' in err:
+                tries += 1
+                sleep(tries)
+            else:
+                break
+        if tries == 10:
+            raise Exception('SLURM ERROR: Transport endpoint is not connected')
+        if 'Invalid job id specified' in err:
+            raise Exception('SLURM ERROR: ' + err)
 
-        cmd = [subtype, cmd, argstring] if argstring else [subtype, cmd]
-        proc = Popen(cmd, shell=False, stdout=PIPE, stderr=PIPE)
-        out, err = proc.communicate()
-        print out, err
         return out, err
      
     def showjob(self, jobid):
@@ -98,6 +102,8 @@ class Slurm(object):
         for item in out.split('\n'):
             for j in item.split(' '):
                 index = j.find('=')
+                if index <= 0:
+                    continue
                 jobinfo[j[:index]] = j[index + 1:]
         return jobinfo
 

@@ -1,5 +1,5 @@
 
-#Slurmpy
+# Slurmpy
 
 
 Python wrapper around slurm console commands. Currently the supported commands are:
